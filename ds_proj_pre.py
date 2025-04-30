@@ -239,6 +239,7 @@ st.title("🚘 Car Assistant")
 tabs = st.tabs(["🔍 Match by Description", "💰 Estimate Price", "📆 Credit Calc"])
 
 # === Tab 1: Match by Description ===
+# === Tab 1: Match by Description ===
 with tabs[0]:
     st.markdown("### 🧾 Опишите автомобиль своей мечты и позвольте нам порекомендовать вам тип топлива, трансмиссию и тип кузова:")
     
@@ -262,7 +263,72 @@ with tabs[0]:
                 for cat, matches in results.items():
                     best_label = matches[0][0] if matches else "Не найдено"
                     st.markdown(f"**{cat}:** {best_label}")
-                    feedback["results"][cat] = matches  # сохраняем с score для админа
+                    feedback["results"][cat] = matches
+
+                
+                st.markdown("---")
+                st.markdown("### 🚗 Рекомендуемые автомобили:")
+                
+                # Получаем рекомендованные характеристики (уже на русском)
+                recommended_type = results["Кузов"][0][0] if results["Кузов"] else "седан"
+                recommended_fuel = results["Топливо"][0][0] if results["Топливо"] else "бензин"
+                recommended_trans = results["Трансмиссия"][0][0] if results["Трансмиссия"] else "автомат"
+                
+                # Фильтруем данные по рекомендациям (учитываем русские названия)
+                filtered_cars = raw_data[
+                    (raw_data['Car_type'].str.lower() == recommended_type.lower()) &
+                    (raw_data['Fuel Type'].str.lower() == recommended_fuel.lower()) &
+                    (raw_data['Transmission'].str.lower() == recommended_trans.lower())
+                ].copy()
+                
+                if not filtered_cars.empty:
+                    # Рассчитываем квартили цены
+                    price_25 = filtered_cars['Price'].quantile(0.25)
+                    price_50 = filtered_cars['Price'].quantile(0.5)
+                    price_75 = filtered_cars['Price'].quantile(0.75)
+                    
+                    # Находим ближайшие автомобили к квартилям
+                    def find_closest_to_quantile(df, quantile_value):
+                        df['price_diff'] = abs(df['Price'] - quantile_value)
+                        return df.sort_values('price_diff').iloc[0]
+                    
+                    car_25 = find_closest_to_quantile(filtered_cars, price_25)
+                    car_50 = find_closest_to_quantile(filtered_cars, price_50)
+                    car_75 = find_closest_to_quantile(filtered_cars, price_75)
+                    
+                    # Отображаем рекомендации
+                    cols = st.columns(3)
+                    with cols[0]:
+                        #st.markdown("#### 💰 Бюджетный вариант (25%)")
+                        st.write(f"**Модель:** {car_25['Company']} {car_25['Mark']}")
+                        st.write(f"**Год:** {int(car_25['Year'])}")
+                        st.write(f"**Пробег:** {int(car_25['Mileage'])} км")
+                        st.write(f"**Цена:** {int(car_25['Price']):,} ₸")
+                        st.write(f"**Тип кузова:** {recommended_type}")
+                        st.write(f"**Топливо:** {recommended_fuel}")
+                        st.write(f"**Коробка:** {recommended_trans}")
+                    
+                    with cols[1]:
+                        #st.markdown("#### ⚖️ Средний вариант (50%)")
+                        st.write(f"**Модель:** {car_50['Company']} {car_50['Mark']}")
+                        st.write(f"**Год:** {int(car_50['Year'])}")
+                        st.write(f"**Пробег:** {int(car_50['Mileage'])} км")
+                        st.write(f"**Цена:** {int(car_50['Price']):,} ₸")
+                        st.write(f"**Тип кузова:** {recommended_type}")
+                        st.write(f"**Топливо:** {recommended_fuel}")
+                        st.write(f"**Коробка:** {recommended_trans}")
+                    
+                    with cols[2]:
+                        #st.markdown("#### 💎 Премиум вариант (75%)")
+                        st.write(f"**Модель:** {car_75['Company']} {car_75['Mark']}")
+                        st.write(f"**Год:** {int(car_75['Year'])}")
+                        st.write(f"**Пробег:** {int(car_75['Mileage'])} км")
+                        st.write(f"**Цена:** {int(car_75['Price']):,} ₸")
+                        st.write(f"**Тип кузова:** {recommended_type}")
+                        st.write(f"**Топливо:** {recommended_fuel}")
+                        st.write(f"**Коробка:** {recommended_trans}")
+                else:
+                    st.warning("Не найдено автомобилей с рекомендованными характеристиками")
 
                 st.subheader("📝 Оцените результат")
                 col1, col2 = st.columns(2)
