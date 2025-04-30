@@ -89,9 +89,15 @@ st.markdown(f"""
 # === Car Description Matching Functions ===
 DATA_PATH = "car_data_full.json"
 FEEDBACK_PATH = "user_feedback.json"
-ADMIN_PASSWORD = "123"
+ADMIN_PASSWORD = "admin123"
 
-
+def git_commit_and_push(message="Auto update"):
+    try:
+        subprocess.run(["git", "add", "."], cwd="car-config-sync", check=True)
+        subprocess.run(["git", "commit", "-m", message], cwd="car-config-sync", check=True)
+        subprocess.run(["git", "push"], cwd="car-config-sync", check=True)
+    except Exception as e:
+        print("Git push failed:", e)
 
 def load_data():
     if os.path.exists(DATA_PATH):
@@ -123,12 +129,12 @@ def load_data():
 def save_data(data):
     with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    
+    git_commit_and_push("Updated car config")
 
 def save_feedback(entry):
     feedback = []
     feedback_dir = os.path.dirname(FEEDBACK_PATH)
-    os.makedirs(feedback_dir, exist_ok=True)  # Создаём папку, если её нет
+    os.makedirs(feedback_dir, exist_ok=True)
 
     if os.path.exists(FEEDBACK_PATH):
         with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
@@ -139,7 +145,7 @@ def save_feedback(entry):
     with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
         json.dump(feedback, f, ensure_ascii=False, indent=2)
 
-   
+    git_commit_and_push("New feedback entry")
 
 def delete_feedback(index):
     if os.path.exists(FEEDBACK_PATH):
@@ -149,7 +155,8 @@ def delete_feedback(index):
             del fb_data[index]
             with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
                 json.dump(fb_data, f, ensure_ascii=False, indent=2)
-            
+            git_commit_and_push("Feedback deleted")
+
 category_blocks = load_data()
 
 def prepare_tfidf_data(keywords_dict):
@@ -230,11 +237,11 @@ model = train_model(df)
 st.title("🚘 Car Assistant")
 
 tabs = st.tabs(["🔍 Match by Description", "💰 Estimate Price", "📆 Credit Calc"])
-# === Tab 1: Match by Description ===
+
 # === Tab 1: Match by Description ===
 with tabs[0]:
     st.markdown("### 🧾 Опишите автомобиль своей мечты и позвольте нам порекомендовать вам тип топлива, трансмиссию и тип кузова:")
-
+    
     mode = st.radio("Выберите режим:", ["Пользователь", "Админ"], horizontal=True, key="mode_radio")
     is_admin = False
     if mode == "Админ":
@@ -245,7 +252,6 @@ with tabs[0]:
             st.error("Неверный пароль")
 
     if not is_admin:
-        # === Пользовательский режим ===
         query = st.text_area("💬 Ваш запрос:", key="user_query")
         if st.button("✨ Find Best Match", key="desc_button"):
             if query.strip() == "":
@@ -262,38 +268,61 @@ with tabs[0]:
                     selected_specs[cat] = best_label
                     feedback["results"][cat] = matches
 
-                # Рекомендации
                 st.markdown("---")
                 st.markdown("### 🚗 Рекомендуемые автомобили:")
-
+                
                 try:
                     filtered_cars = raw_data.copy()
-
+                    
                     if 'Кузов' in selected_specs:
                         filtered_cars = filtered_cars[filtered_cars['Car_type'].str.lower() == selected_specs['Кузов'].lower()]
+                    
                     if 'Трансмиссия' in selected_specs:
                         filtered_cars = filtered_cars[filtered_cars['Transmission'].str.lower() == selected_specs['Трансмиссия'].lower()]
+                    
                     if 'Топливо' in selected_specs:
                         filtered_cars = filtered_cars[filtered_cars['Fuel Type'].str.lower() == selected_specs['Топливо'].lower()]
-
+                    
                     if not filtered_cars.empty:
                         filtered_cars = filtered_cars.sort_values('Price')
-                        budget_car = filtered_cars.iloc[max(0, int(len(filtered_cars) * 0.25))]
-                        mid_car = filtered_cars.iloc[int(len(filtered_cars) * 0.5)]
-                        premium_car = filtered_cars.iloc[min(int(len(filtered_cars) * 0.75), len(filtered_cars)-1)]
-
+                        
+                        budget_idx = int(len(filtered_cars) * 0.25)
+                        budget_car = filtered_cars.iloc[max(0, budget_idx)]
+                        
+                        mid_idx = int(len(filtered_cars) * 0.5)
+                        mid_car = filtered_cars.iloc[mid_idx]
+                        
+                        premium_idx = int(len(filtered_cars) * 0.75)
+                        premium_car = filtered_cars.iloc[min(premium_idx, len(filtered_cars)-1)]
+                        
                         col1, col2, col3 = st.columns(3)
-                        for col, car in zip([col1, col2, col3], [budget_car, mid_car, premium_car]):
-                            with col:
-                                st.markdown(f"**{car['Company']} {car['Mark']}**")
-                                st.markdown(f"Год: {car['Year']}")
-                                st.markdown(f"Пробег: {car['Mileage']:,} км")
-                                st.markdown(f"Цена: **{int(car['Price']):,} ₸**")
-
+                        
+                        with col1:
+                            st.markdown("#### 💰 Бюджетный вариант")
+                            st.markdown(f"**{budget_car['Company']} {budget_car['Mark']}**")
+                            st.markdown(f"Год: {budget_car['Year']}")
+                            st.markdown(f"Пробег: {budget_car['Mileage']:,} км")
+                            st.markdown(f"Цена: **{int(budget_car['Price']):,} ₸**")
+                        
+                        with col2:
+                            st.markdown("#### 👍 Оптимальный вариант")
+                            st.markdown(f"**{mid_car['Company']} {mid_car['Mark']}**")
+                            st.markdown(f"Год: {mid_car['Year']}")
+                            st.markdown(f"Пробег: {mid_car['Mileage']:,} км")
+                            st.markdown(f"Цена: **{int(mid_car['Price']):,} ₸**")
+                        
+                        with col3:
+                            st.markdown("#### 💎 Премиальный вариант")
+                            st.markdown(f"**{premium_car['Company']} {premium_car['Mark']}**")
+                            st.markdown(f"Год: {premium_car['Year']}")
+                            st.markdown(f"Пробег: {premium_car['Mileage']:,} км")
+                            st.markdown(f"Цена: **{int(premium_car['Price']):,} ₸**")
+                        
                         with st.expander("🔍 Показать все подходящие варианты"):
                             st.dataframe(filtered_cars[['Company', 'Mark', 'Year', 'Price', 'Mileage', 'Fuel Type', 'Transmission', 'Car_type']].sort_values('Price'))
                     else:
                         st.warning("К сожалению, в нашей базе нет автомобилей с такими характеристиками.")
+                
                 except Exception as e:
                     st.error(f"Произошла ошибка при поиске автомобилей: {str(e)}")
 
@@ -310,15 +339,14 @@ with tabs[0]:
                         feedback["comment"] = st.text_input("Комментарий (по желанию)", key="comment_input")
                         save_feedback(feedback)
                         st.warning("Ваш отзыв сохранён. Спасибо!")
-
     else:
-        # === Админский режим ===
         st.subheader("📋 Отчёты от пользователей")
         if os.path.exists(FEEDBACK_PATH):
             with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
                 fb_data = json.load(f)
 
             sort_option = st.selectbox("Сортировка отзывов:", ["Все", "Только лайки", "Только дизлайки"], key="sort_feedback")
+
             filtered_fb = fb_data
             if sort_option == "Только лайки":
                 filtered_fb = [x for x in fb_data if x.get("rating") == "like"]
@@ -376,6 +404,7 @@ with tabs[0]:
             category_blocks[category][label] = new_text
             save_data(category_blocks)
             st.success("Описание обновлено и сохранено!")
+
 # === Tab 2: Estimate Price ===
 with tabs[1]:
     st.markdown("### 📊 Enter your car's features to get a price estimate:")
